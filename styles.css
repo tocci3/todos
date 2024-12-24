@@ -1,0 +1,165 @@
+.task-list {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.task-list li {
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.task-content {
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    margin-bottom: 2px;
+}
+
+.task-item {
+    cursor: move;
+    transition: background-color 0.3s, border 0.3s;
+}
+
+.task-item.dragging {
+    opacity: 0.5;
+}
+
+.task-item:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.children-container {
+    margin-left: 20px;
+}
+
+.children-container {
+    width: 100%;
+    padding-left: 0;
+    list-style-type: none;
+}
+
+.toggle-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+}
+
+.task-list ul {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.custom-checkbox {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    padding-left: 22px;
+    margin-right: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    user-select: none;
+    height: 20px;
+}
+
+.custom-checkbox input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 16px;
+    width: 16px;
+    background-color: #eee;
+    border: 1px solid #ddd;
+}
+
+.custom-checkbox:hover input ~ .checkmark {
+    background-color: #ccc;
+}
+
+.custom-checkbox input:checked ~ .checkmark {
+    background-color: #2196F3;
+}
+
+.checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+}
+
+.custom-checkbox input:checked ~ .checkmark:after {
+    display: block;
+}
+
+.custom-checkbox .checkmark:after {
+    left: 5px;
+    top: 2px;
+    width: 3px;
+    height: 8px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.custom-checkbox input.in-progress ~ .checkmark:after {
+    display: block;
+    left: 4px;
+    top: 9px;
+    width: 12px;
+    height: 2px;
+    background-color: #000;
+    border: none;
+    transform: none;
+}
+
+.task-title {
+    margin-right: 10px;
+    flex-grow: 1;
+    padding: 2px 5px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    line-height: 20px;
+}
+
+.task-title:hover {
+    border-color: #ccc;
+    cursor: text;
+}
+
+.task-title:focus {
+    outline: none;
+    border-color: #2196F3;
+}
+
+.completed {
+    text-decoration: line-through;
+    color: #888;
+}
+
+.task-times {
+    font-size: 0.5em;
+    color: #666;
+    margin-right: 2px;
+}
+
+.task-times span {
+    margin-right: 5px;
+}
+
+.task-title {
+    margin-left: -5px;
+}
+
+button {
+    margin-left: 5px;
+}

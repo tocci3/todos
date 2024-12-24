@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TODO List</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <h1>TODO List</h1>
+        <input type="text" id="newTask" placeholder="Enter a new task" onkeypress="handleKeyPress(event)">
+        <button onclick="addTask()">Add</button>
+        <button onclick="syncWithSheet()">Sync</button>
+        <div class="options">
+            <label>
+                <input type="checkbox" id="hideCompleted" checked onchange="toggleHideCompleted()">Hide completed tasks
+            </label>
+            <label>
+                <input type="checkbox" id="showTimes" onchange="toggleShowTimes()">Show times
+            </label>
+        </div>
+        <ul id="taskList" class="task-list"></ul>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
