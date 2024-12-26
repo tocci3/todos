@@ -4,7 +4,7 @@
 }
 
 .task-list li {
-    margin-bottom: 5px;
+    margin-bottom: 2px;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -13,8 +13,8 @@
 .task-content {
     display: flex;
     align-items: center;
-    padding: 5px;
-    margin-bottom: 2px;
+    padding: 2px 5px;
+    margin-bottom: 0;
 }
 
 .task-item {
@@ -62,7 +62,7 @@
     cursor: pointer;
     font-size: 16px;
     user-select: none;
-    height: 20px;
+    height: 18px;
 }
 
 .custom-checkbox input {
@@ -113,8 +113,8 @@
 
 .custom-checkbox input.in-progress ~ .checkmark:after {
     display: block;
-    left: 4px;
-    top: 9px;
+    left: 2px;
+    top: 7px;
     width: 12px;
     height: 2px;
     background-color: #000;
@@ -125,10 +125,10 @@
 .task-title {
     margin-right: 10px;
     flex-grow: 1;
-    padding: 2px 5px;
+    padding: 1px 5px;
     border: 1px solid transparent;
     border-radius: 3px;
-    line-height: 20px;
+    line-height: 1.2;
 }
 
 .task-title:hover {
@@ -160,6 +160,25 @@
     margin-left: -5px;
 }
 
+.custom-checkbox input.in-progress ~ .checkmark:after {
+    display: block;
+    left: 2px;
+    top: 7px;
+    width: 12px;
+    height: 2px;
+    background-color: #000;
+    border: none;
+    transform: none;
+}
+
 button {
+    padding: 2px 5px;
+    font-size: 0.9em;
     margin-left: 5px;
 }
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
