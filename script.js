@@ -387,7 +387,8 @@ function renderTaskTree(taskList, parentElement, depth) {
             renderTaskTree(task.children, childrenContainer, depth + 1);
         }
 
-        li.addEventListener('keydown', (e) => handleTaskKeyPress(e, task.id));
+        const taskTitleElement = li.querySelector('.task-title');
+        taskTitleElement.addEventListener('keydown', (e) => handleTaskKeyPress(e, task.id));
     });
 }
 
@@ -499,15 +500,23 @@ function moveTask(taskId, direction) {
 }
 
 function indentTask(taskId) {
-    const indentTaskInList = (taskList) => {
-        for (let i = 1; i < taskList.length; i++) {
+    const indentTaskInList = (taskList, parentList = null) => {
+        for (let i = 0; i < taskList.length; i++) {
             if (taskList[i].id === taskId) {
-                const task = taskList.splice(i, 1)[0];
-                taskList[i - 1].children.push(task);
-                return true;
+                if (i > 0) {
+                    const task = taskList.splice(i, 1)[0];
+                    if (!taskList[i - 1].children) {
+                        taskList[i - 1].children = [];
+                    }
+                    taskList[i - 1].children.push(task);
+                    return true;
+                }
+                return false;
             }
-            if (taskList[i].children.length > 0 && indentTaskInList(taskList[i].children)) {
-                return true;
+            if (taskList[i].children && taskList[i].children.length > 0) {
+                if (indentTaskInList(taskList[i].children, taskList)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -530,8 +539,10 @@ function unindentTask(taskId) {
                 }
                 return false;
             }
-            if (taskList[i].children.length > 0 && unindentTaskInList(taskList[i].children, taskList, i)) {
-                return true;
+            if (taskList[i].children && taskList[i].children.length > 0) {
+                if (unindentTaskInList(taskList[i].children, taskList, i)) {
+                    return true;
+                }
             }
         }
         return false;
