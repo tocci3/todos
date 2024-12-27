@@ -168,36 +168,6 @@ function saveTasks() {
     localStorage.setItem('tasks', JSON.stringify(tasks));
 }
 
-/*
-function addTask(parentId = null) {
-    const newTask = {
-        id: Date.now(),
-        title: "New task",
-        status: 0,
-        addedAt: new Date().toISOString(),
-        startedAt: null,
-        completedAt: null,
-        children: []
-    };
-
-    if (parentId === null) {
-        tasks.push(newTask);
-    } else {
-        addChildTask(parentId, newTask);
-    }
-
-    saveTasks();
-    renderTasks();
-
-    // 新しく追加されたタスクにフォーカスを当てる
-    setTimeout(() => {
-        const newTaskElement = document.querySelector(`[data-task-id="${newTask.id}"] .task-title`);
-        if (newTaskElement) {
-            newTaskElement.focus();
-        }
-    }, 0);
-}
-*/
 function addTask(parentId = null) {
     const newTaskInput = document.getElementById('newTask');
     const taskTitle = newTaskInput.value.trim();
@@ -231,6 +201,18 @@ function addChildTask(parentId, newTask) {
         for (let task of taskList) {
             if (task.id === parentId) {
                 task.children.push(newTask);
+                // 親タスクの表示状態を確認
+                const parentContainer = document.getElementById(`children-${parentId}`);
+                if (parentContainer && parentContainer.style.display === 'none') {
+                    // 親が閉じている場合、新しい子タスクを非表示にする
+                    renderTasks();
+                    const newChildContainer = document.getElementById(`children-${newTask.id}`);
+                    if (newChildContainer) {
+                        newChildContainer.style.display = 'none';
+                    }
+                } else {
+                    renderTasks();
+                }
                 return true;
             }
             if (task.children.length > 0 && findAndAddChild(task.children)) {
@@ -382,9 +364,16 @@ function renderTaskTree(taskList, parentElement, depth) {
             const childrenContainer = document.createElement('ul');
             childrenContainer.className = 'children-container';
             childrenContainer.id = `children-${task.id}`;
-            childrenContainer.style.display = 'block'; // 初期状態では表示
+            const isExpanded = getTaskState(task.id);
+            childrenContainer.style.display = isExpanded ? 'block' : 'none';
             li.appendChild(childrenContainer);
             renderTaskTree(task.children, childrenContainer, depth + 1);
+
+            // トグルボタンの表示を更新
+            const toggleBtn = li.querySelector('.toggle-btn');
+            if (toggleBtn) {
+                toggleBtn.textContent = isExpanded ? '▼' : '▶';
+            }
         }
 
         const taskTitleElement = li.querySelector('.task-title');
@@ -446,6 +435,19 @@ function toggleChildren(taskId) {
         childrenContainer.style.display = 'none';
         toggleBtn.textContent = '▶';
     }
+    // 表示状態を保存
+    saveTaskState(taskId, childrenContainer.style.display === 'block');
+}
+
+function saveTaskState(taskId, isExpanded) {
+    const taskStates = JSON.parse(localStorage.getItem('taskStates') || '{}');
+    taskStates[taskId] = isExpanded;
+    localStorage.setItem('taskStates', JSON.stringify(taskStates));
+}
+
+function getTaskState(taskId) {
+    const taskStates = JSON.parse(localStorage.getItem('taskStates') || '{}');
+    return taskStates[taskId] !== undefined ? taskStates[taskId] : true; // デフォルトは展開状態
 }
 
 function editTask(taskId) {
