@@ -5,6 +5,159 @@ let draggedTask = null;
 let dropTarget = null;
 let dropPosition = null;
 let dragStartX = 0;
+let importedTasksTemp = null;
+
+function exportTasks() {
+    const tasksJson = JSON.stringify(tasks, null, 2);
+    const blob = new Blob([tasksJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tasks.json';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function importTasks() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = (event) => {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const importedTasks = JSON.parse(e.target.result);
+                if (!Array.isArray(importedTasks)) {
+                    throw new Error('Invalid format: Imported data is not an array');
+                }
+                importedTasksTemp = importedTasks;
+                showImportModal();
+            } catch (error) {
+                console.error('Import error:', error);
+                alert('Error importing tasks. Please check the file format.');
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+function showExportModal() {
+    document.getElementById('exportModal').style.display = 'block';
+}
+
+function hideExportModal() {
+    document.getElementById('exportModal').style.display = 'none';
+    document.getElementById('exportTextBox').style.display = 'none';
+}
+
+function exportToFile() {
+    const tasksJson = JSON.stringify(tasks, null, 2);
+    const blob = new Blob([tasksJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tasks.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    hideExportModal();
+}
+
+function exportToTextBox() {
+    const tasksJson = JSON.stringify(tasks, null, 2);
+    const textBox = document.getElementById('exportTextBox');
+    textBox.value = tasksJson;
+    textBox.style.display = 'block';
+}
+
+function showImportModal() {
+    document.getElementById('importModal').style.display = 'block';
+    document.getElementById('importTextBox').style.display = 'none';
+    document.getElementById('importOptions').style.display = 'none';
+    document.getElementById('appendRadio').checked = true; // デフォルトで Append を選択
+}
+
+function importFromFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = (event) => {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                importedTasksTemp = JSON.parse(e.target.result);
+                if (!Array.isArray(importedTasksTemp)) {
+                    throw new Error('Invalid format: Imported data is not an array');
+                }
+                handleImport();
+            } catch (error) {
+                console.error('Import error:', error);
+                alert('Error importing tasks. Please check the file format.');
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+function showImportTextBox() {
+    const importTextBox = document.getElementById('importTextBox');
+    importTextBox.style.display = 'block';
+    importTextBox.value = '';
+    document.getElementById('importOptions').style.display = 'block';
+}
+
+function handleImport() {
+    let importedTasks;
+    const textBox = document.getElementById('importTextBox');
+    if (textBox.style.display !== 'none' && textBox.value.trim() !== '') {
+        try {
+            importedTasks = JSON.parse(textBox.value);
+            if (!Array.isArray(importedTasks)) {
+                throw new Error('Invalid format: Imported data is not an array');
+            }
+        } catch (error) {
+            console.error('Import error:', error);
+            alert('Error importing tasks. Please check the JSON format.');
+            return;
+        }
+    } else if (importedTasksTemp) {
+        importedTasks = importedTasksTemp;
+    } else {
+        alert('No tasks to import.');
+        hideImportModal();
+        return;
+    }
+
+    const importType = document.querySelector('input[name="importType"]:checked').value;
+
+    if (importType === 'append') {
+        tasks = tasks.concat(importedTasks);
+        alert('Tasks appended successfully!');
+    } else if (importType === 'replace') {
+        tasks = importedTasks;
+        alert('Tasks replaced successfully!');
+    }
+
+    saveTasks();
+    renderTasks();
+    hideImportModal();
+    importedTasksTemp = null;
+    textBox.value = '';
+}
+
+function cancelImport() {
+    hideImportModal();
+}
+
+function hideImportModal() {
+    document.getElementById('importModal').style.display = 'none';
+    document.getElementById('importTextBox').value = '';
+    document.getElementById('importTextBox').style.display = 'none';
+    document.getElementById('importOptions').style.display = 'none';
+}
 
 function dragStart(e) {
     draggedTask = e.target.closest('.task-item');

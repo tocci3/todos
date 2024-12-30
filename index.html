@@ -11,7 +11,8 @@
         <h1>TODO List</h1>
         <input type="text" id="newTask" placeholder="Enter a new task" onkeypress="handleKeyPress(event)">
         <button onclick="addTask()">Add</button>
-        <!-- <button onclick="syncWithSheet()" id="syncButton" disabled>Sync</button> -->
+        <button onclick="showExportModal()">Export</button>
+        <button onclick="showImportModal()">Import</button>
         <div class="options">
             <label>
                 <input type="checkbox" id="hideCompleted" checked onchange="toggleHideCompleted()">Hide completed tasks
@@ -23,5 +24,35 @@
         <ul id="taskList" class="task-list"></ul>
     </div>
     <script src="script.js"></script>
+    <!-- Export Modal -->
+    <div id="exportModal" class="modal">
+        <div class="modal-content">
+            <h2>Export Tasks</h2>
+            <button onclick="exportToFile()">Export to File</button>
+            <button onclick="exportToTextBox()">Export to Text Box</button>
+            <button onclick="hideExportModal()">Cancel</button>
+            <textarea id="exportTextBox" style="display:none; width: 100%; height: 200px; margin-top: 10px;"></textarea>
+        </div>
+    </div>
+    <!-- Import Modal -->
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <h2>Import Tasks</h2>
+            <div>
+                <input type="radio" id="appendRadio" name="importType" value="append" checked>
+                <label for="appendRadio">Append</label>
+                <input type="radio" id="replaceRadio" name="importType" value="replace">
+                <label for="replaceRadio">Replace</label>
+            </div>
+            <button onclick="importFromFile()">Import from File</button>
+            <button onclick="showImportTextBox()">Import from Text Box</button>
+            <button onclick="hideImportModal()">Cancel</button>
+            <textarea id="importTextBox" style="display:none; width: 100%; height: 200px; margin-top: 10px;"></textarea>
+            <div id="importOptions" style="display:none; margin-top: 10px;">
+                <button onclick="handleImport()">Import</button>
+                <button onclick="cancelImport()">Cancel</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
