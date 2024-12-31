@@ -41,11 +41,20 @@
 }
 
 .toggle-btn {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin-right: 5px;
     background: none;
     border: none;
     cursor: pointer;
     font-size: 12px;
-    padding: 0;
+    line-height: 1;
+    text-align: center;
+}
+
+.toggle-btn:focus {
+    outline: none;
 }
 
 .task-list ul {
@@ -203,6 +212,10 @@
 
 .modal-content input[type="radio"] {
     margin-right: 5px;
+}
+
+.task-item.selected > .task-content {
+    background-color: #e6f3ff;
 }
 
 button {

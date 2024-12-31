@@ -6,6 +6,487 @@ let dropTarget = null;
 let dropPosition = null;
 let dragStartX = 0;
 let importedTasksTemp = null;
+//let selectedTaskId = null;
+let selectedTaskIds = new Set();
+let lastSelectedTaskId = null;
+
+function handleKeyDown(event) {
+    const activeElement = document.activeElement;
+    const isEditing = activeElement.classList.contains('task-title') && activeElement.isContentEditable;
+
+    if (isEditing) {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            // 編集中の場合、編集を確定してから移動
+            event.preventDefault();
+            const taskId = parseInt(activeElement.getAttribute('data-task-id'));
+            const task = findTaskById(taskId);
+            if (task) {
+                const newTitle = activeElement.textContent.trim();
+                if (newTitle !== task.title) {
+                    updateTaskTitle(taskId, newTitle);
+                }
+            }
+            activeElement.blur();
+            setTimeout(() => {
+                if (document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
+                }
+            }, 0);
+            moveSelection(event.key === 'ArrowUp' ? -1 : 1);
+        } else if (event.key === 'Tab') {
+            event.preventDefault();
+            if (event.shiftKey) {
+                unindentTask(parseInt(activeElement.getAttribute('data-task-id')));
+            } else {
+                indentTask(parseInt(activeElement.getAttribute('data-task-id')));
+            }
+        } else if (event.key === 'Enter' && !event.shiftKey) {
+            // Enterキーで編集を確定
+            event.preventDefault();
+            const taskId = parseInt(activeElement.getAttribute('data-task-id'));
+            const task = findTaskById(taskId);
+            if (task) {
+                const newTitle = activeElement.textContent.trim();
+                if (newTitle !== task.title) {
+                    updateTaskTitle(taskId, newTitle);
+                }
+            }
+            activeElement.blur();
+        } else if (event.key === 'Escape') {
+            // Escキーで編集をキャンセル
+            event.preventDefault();
+            cancelEdit(activeElement);
+        }
+    } else {
+        switch (event.key) {
+            case 'ArrowUp':
+                event.preventDefault();
+                if (event.shiftKey) {
+                    extendSelectionUp();
+                } else {
+                    moveSelection(-1);
+                }
+                break;
+            case 'ArrowDown':
+                event.preventDefault();
+                if (event.shiftKey) {
+                    extendSelectionDown();
+                } else {
+                    moveSelection(1);
+                }
+                break;
+            case 'ArrowRight':
+                event.preventDefault();
+                expandSelectedTask();
+                break;
+            case 'ArrowLeft':
+                event.preventDefault();
+                collapseSelectedTask();
+                break;
+            case 'Enter':
+                if (event.target.id !== 'newTask') {
+                    event.preventDefault();
+                    enterEditMode();
+                }
+                break;
+            case 'Tab':
+                event.preventDefault();
+                if (event.shiftKey) {
+                    unindentSelectedTasks();
+                } else {
+                    indentSelectedTasks();
+                }
+                break;
+        }
+    }
+}
+
+function extendSelectionDown() {
+    const allTasks = getAllTasksFlattened();
+    const visibleTasks = allTasks.filter(task => isTaskVisible(task));
+
+    if (visibleTasks.length === 0 || selectedTaskIds.size === 0) return;
+
+    const lowerTaskId = findLowerVisibleTaskId(visibleTasks);
+    if (lowerTaskId === null) return;
+
+    const lowerTask = visibleTasks.find(task => task.id === lowerTaskId);
+    const highestSelectedTask = findHighestSelectedTask(visibleTasks);
+
+    if (getTaskDepth(lowerTask) > getTaskDepth(highestSelectedTask)) {
+        // 下位レベルのタスクを選択する場合
+        selectTaskWithDescendantsAndNextSiblings(lowerTask);
+    } else if (getTaskDepth(lowerTask) < getTaskDepth(highestSelectedTask)) {
+        // 上位レベルのタスクを選択する場合
+        const ancestorAtSameLevel = findAncestorAtSameLevel(highestSelectedTask, getTaskDepth(lowerTask));
+        if (ancestorAtSameLevel) {
+            selectTasksInRange(ancestorAtSameLevel, lowerTask);
+        } else {
+            selectTaskWithDescendants(lowerTask);
+        }
+    } else {
+        // 同じレベルのタスクを選択する場合
+        selectedTaskIds.add(lowerTaskId);
+    }
+
+    lastSelectedTaskId = lowerTaskId;
+    updateTaskSelection();
+    scrollToTask(lowerTaskId);
+}
+
+function selectTasksInRange(startTask, endTask) {
+    const allTasks = getAllTasksFlattened();
+    let selecting = false;
+    for (const task of allTasks) {
+        if (task.id === startTask.id) {
+            selecting = true;
+        }
+        if (selecting) {
+            selectedTaskIds.add(task.id);
+        }
+        if (task.id === endTask.id) {
+            break;
+        }
+    }
+}
+
+function findLowerVisibleTaskId(visibleTasks) {
+    const selectedIndices = Array.from(selectedTaskIds)
+        .map(id => visibleTasks.findIndex(task => task.id === id))
+        .filter(index => index !== -1)
+        .sort((a, b) => b - a);
+
+    if (selectedIndices.length === 0 || selectedIndices[0] === visibleTasks.length - 1) {
+        return null;
+    }
+
+    return visibleTasks[selectedIndices[0] + 1].id;
+}
+
+function findHighestSelectedTask(visibleTasks) {
+    const selectedIndices = Array.from(selectedTaskIds)
+        .map(id => visibleTasks.findIndex(task => task.id === id))
+        .filter(index => index !== -1)
+        .sort((a, b) => a - b);
+
+    return visibleTasks[selectedIndices[0]];
+}
+
+function selectTaskWithDescendantsAndNextSiblings(task) {
+    const taskWithDescendants = getTaskWithDescendants(task);
+    taskWithDescendants.forEach(t => selectedTaskIds.add(t.id));
+
+    const parentTask = findParentTask(task.id);
+    if (parentTask) {
+        const siblings = parentTask.children;
+        const taskIndex = siblings.findIndex(sibling => sibling.id === task.id);
+        for (let i = taskIndex + 1; i < siblings.length; i++) {
+            selectedTaskIds.add(siblings[i].id);
+        }
+    }
+}
+
+function findAncestorAtSameLevel(task, targetDepth) {
+    let currentTask = task;
+    let currentDepth = getTaskDepth(task);
+
+    while (currentDepth > targetDepth) {
+        const parent = findParentTask(currentTask.id);
+        if (!parent) return null;
+        currentTask = parent;
+        currentDepth--;
+    }
+
+    return currentTask;
+}
+
+function extendSelectionUp() {
+    const allTasks = getAllTasksFlattened();
+    const visibleTasks = allTasks.filter(task => isTaskVisible(task));
+
+    if (visibleTasks.length === 0 || selectedTaskIds.size === 0) return;
+
+    const upperTaskId = findUpperVisibleTaskId(visibleTasks);
+    if (upperTaskId === null) return;
+
+    const upperTask = visibleTasks.find(task => task.id === upperTaskId);
+    const lowestSelectedTask = findLowestSelectedTask(visibleTasks);
+
+    if (getTaskDepth(upperTask) < getTaskDepth(lowestSelectedTask)) {
+        // 上位レベルのタスクを選択する場合
+        selectTaskWithDescendants(upperTask);
+    } else if (getTaskDepth(upperTask) > getTaskDepth(lowestSelectedTask)) {
+        // 下位レベルのタスクを選択する場合
+        const parentTask = findParentTask(upperTask.id);
+        if (parentTask) {
+            selectTaskWithDescendants(parentTask);
+        } else {
+            selectTaskWithDescendants(upperTask);
+        }
+    } else {
+        // 同じレベルまたは下位レベルのタスクを選択する場合
+        selectedTaskIds.add(upperTaskId);
+    }
+
+    lastSelectedTaskId = upperTaskId;
+    updateTaskSelection();
+    scrollToTask(upperTaskId);
+}
+
+function selectTaskWithDescendants(task) {
+    const taskWithDescendants = getTaskWithDescendants(task);
+    taskWithDescendants.forEach(t => selectedTaskIds.add(t.id));
+}
+
+function getTaskWithDescendants(task) {
+    const result = [task];
+    if (task.children && task.children.length > 0) {
+        task.children.forEach(child => {
+            result.push(...getTaskWithDescendants(child));
+        });
+    }
+    return result;
+}
+
+function findParentTask(taskId, taskList = tasks) {
+    for (const task of taskList) {
+        if (task.children && task.children.some(child => child.id === taskId)) {
+            return task;
+        }
+        if (task.children) {
+            const parent = findParentTask(taskId, task.children);
+            if (parent) return parent;
+        }
+    }
+    return null;
+}
+
+function findLowestSelectedTask(visibleTasks) {
+    const selectedIndices = Array.from(selectedTaskIds)
+        .map(id => visibleTasks.findIndex(task => task.id === id))
+        .filter(index => index !== -1)
+        .sort((a, b) => b - a);
+
+    return visibleTasks[selectedIndices[0]];
+}
+
+function getTaskDepth(task) {
+    let depth = 0;
+    let currentTask = task;
+    while (findParentTask(currentTask.id)) {
+        depth++;
+        currentTask = findParentTask(currentTask.id);
+    }
+    return depth;
+}
+
+function selectFirstVisibleTask() {
+    const allTasks = getAllTasksFlattened();
+    const firstVisibleTask = allTasks.find(task => isTaskVisible(task));
+    if (firstVisibleTask) {
+        selectTask(firstVisibleTask.id);
+        scrollToTask(firstVisibleTask.id);
+    }
+}
+
+function cancelEdit(element) {
+    const taskId = parseInt(element.getAttribute('data-task-id'));
+    const task = findTaskById(taskId);
+    if (task) {
+        element.textContent = task.title;
+        element.blur();
+        setTimeout(() => {
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
+        }, 0);
+    }
+}
+
+function enterEditMode() {
+    if (selectedTaskIds.size > 0) {
+        const lastSelectedId = Array.from(selectedTaskIds).pop();
+        const taskElement = document.querySelector(`[data-task-id="${lastSelectedId}"]`);
+        if (taskElement) {
+            const taskTitleElement = taskElement.querySelector('.task-title');
+            if (taskTitleElement) {
+                taskTitleElement.focus();
+                // カーソルを末尾に移動
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(taskTitleElement);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+    }
+}
+
+function expandSelectedTask() {
+    if (selectedTaskIds.size > 0) {
+        const lastSelectedId = Array.from(selectedTaskIds).pop();
+        const task = findTaskById(lastSelectedId);
+        if (task && task.children && task.children.length > 0 && !task.isExpanded) {
+            toggleChildren(lastSelectedId);
+        }
+    }
+}
+
+function collapseSelectedTask() {
+    if (selectedTaskIds.size > 0) {
+        const lastSelectedId = Array.from(selectedTaskIds).pop();
+        const task = findTaskById(lastSelectedId);
+        if (task && task.children && task.children.length > 0 && task.isExpanded) {
+            toggleChildren(lastSelectedId);
+        } else {
+            // 子要素がない場合や既に閉じている場合は、親タスクを選択
+            const parentTask = findParentTask(lastSelectedId);
+            if (parentTask) {
+                selectedTaskIds.clear();
+                selectedTaskIds.add(parentTask.id);
+                updateTaskSelection();
+                scrollToTask(parentTask.id);
+            }
+        }
+    }
+}
+
+function moveSelection(direction) {
+    const allTasks = getAllTasksFlattened();
+    const visibleTasks = allTasks.filter(task => isTaskVisible(task));
+    
+    if (visibleTasks.length === 0) return;
+
+    if (selectedTaskIds.size === 0) {
+        // 選択されているタスクがない場合、最初または最後のタスクを選択
+        const taskToSelect = direction > 0 ? visibleTasks[0] : visibleTasks[visibleTasks.length - 1];
+        selectTask(taskToSelect.id);
+        return;
+    }
+
+    if (direction < 0) {
+        // 上キーが押された場合
+        const upperTaskId = findUpperVisibleTaskId(visibleTasks);
+        if (upperTaskId !== null) {
+            selectTask(upperTaskId);
+        }
+    } else {
+        // 下キーが押された場合（既存の動作を維持）
+        const lastSelectedId = lastSelectedTaskId;
+        const currentIndex = visibleTasks.findIndex(task => task.id === lastSelectedId);
+        let newIndex = currentIndex + direction;
+        if (newIndex >= visibleTasks.length) newIndex = 0;
+        selectTask(visibleTasks[newIndex].id);
+    }
+
+    scrollToTask(Array.from(selectedTaskIds)[0]);
+}
+
+function findUpperVisibleTaskId(visibleTasks) {
+    const selectedIndices = Array.from(selectedTaskIds)
+        .map(id => visibleTasks.findIndex(task => task.id === id))
+        .filter(index => index !== -1)
+        .sort((a, b) => a - b);
+
+    if (selectedIndices.length === 0 || selectedIndices[0] === 0) {
+        return null;
+    }
+
+    return visibleTasks[selectedIndices[0] - 1].id;
+}
+
+function isTaskVisible(task) {
+    if (hideCompleted && task.status === 2) {
+        return false;
+    }
+    let currentTask = task;
+    while (currentTask) {
+        const parentTask = findParentTask(currentTask.id);
+        if (parentTask && !parentTask.isExpanded) {
+            return false;
+        }
+        currentTask = parentTask;
+    }
+    return true;
+}
+
+function getAllTasksFlattened() {
+    const flattened = [];
+    function flatten(tasks, depth = 0, isVisible = true) {
+        tasks.forEach(task => {
+            if (!hideCompleted || task.status !== 2) {
+                flattened.push({ ...task, depth, isVisible });
+            }
+            if (task.children && task.children.length > 0) {
+                flatten(task.children, depth + 1, isVisible && task.isExpanded);
+            }
+        });
+    }
+    flatten(tasks);
+    return flattened;
+}
+
+function scrollToTask(taskId) {
+    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (taskElement) {
+        taskElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+function selectTask(taskId) {
+    if (!event.shiftKey) {
+        selectedTaskIds.clear();
+    }
+    selectedTaskIds.add(taskId);
+    lastSelectedTaskId = taskId;
+    updateTaskSelection();
+}
+
+function expandParents(taskId) {
+    let currentTask = tasks.find(task => task.id === taskId);
+    while (currentTask) {
+        const parentTask = findParentTask(currentTask.id);
+        if (parentTask) {
+            const childrenContainer = document.getElementById(`children-${parentTask.id}`);
+            if (childrenContainer) {
+                childrenContainer.style.display = 'block';
+                const toggleBtn = childrenContainer.parentElement.querySelector('.toggle-btn');
+                if (toggleBtn) toggleBtn.textContent = '▼';
+            }
+            currentTask = parentTask;
+        } else {
+            break;
+        }
+    }
+    getAllTasksFlattened(); // 表示状態を更新
+}
+
+function findParentTask(taskId, taskList = tasks) {
+    for (const task of taskList) {
+        if (task.children && task.children.some(child => child.id === taskId)) {
+            return task;
+        }
+        if (task.children) {
+            const parent = findParentTask(taskId, task.children);
+            if (parent) return parent;
+        }
+    }
+    return null;
+}
+
+function updateTaskSelection() {
+    document.querySelectorAll('.task-item').forEach(item => {
+        const itemId = parseInt(item.getAttribute('data-task-id'));
+        if (selectedTaskIds.has(itemId)) {
+            item.classList.add('selected');
+            // 選択されたタスクが表示されるようにスクロール
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
 
 function exportTasks() {
     const tasksJson = JSON.stringify(tasks, null, 2);
@@ -292,6 +773,7 @@ function moveTaskToNewPosition(draggedTaskId, targetTaskId, position) {
         if (inserted) {
             saveTasks();
             renderTasks();
+            selectTask(draggedTaskId);
         }
     }
 }
@@ -347,6 +829,7 @@ function addTask(parentId = null) {
 
     saveTasks();
     renderTasks();
+    selectTask(newTask.id);
 }
 
 function addChildTask(parentId, newTask) {
@@ -380,13 +863,16 @@ function addChildTask(parentId, newTask) {
 
 function deleteTask(taskId) {
     const deleteTaskRecursive = (taskList) => {
+        if (!taskList || !Array.isArray(taskList)) return false;
         for (let i = 0; i < taskList.length; i++) {
             if (taskList[i].id === taskId) {
                 taskList.splice(i, 1);
                 return true;
             }
-            if (taskList[i].children.length > 0 && deleteTaskRecursive(taskList[i].children)) {
-                return true;
+            if (taskList[i].children && taskList[i].children.length > 0) {
+                if (deleteTaskRecursive(taskList[i].children)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -395,6 +881,9 @@ function deleteTask(taskId) {
     if (deleteTaskRecursive(tasks)) {
         saveTasks();
         renderTasks();
+        // 選択を解除
+        selectedTaskIds.delete(taskId);
+        updateTaskSelection();
     }
 }
 
@@ -461,15 +950,14 @@ function renderTasks() {
     const taskList = document.getElementById('taskList');
     taskList.innerHTML = '';
     renderTaskTree(tasks, taskList, 0);
+    // 選択状態を維持
+    updateTaskSelection();
 }
 
-function renderTaskTree(taskList, parentElement, depth) {
+function renderTaskTree(taskList, parentElement, depth = 0) {
     taskList.forEach(task => {
         if (hideCompleted && task.status === 2) {
-            if (task.children.length > 0) {
-                renderTaskTree(task.children, parentElement, depth);
-            }
-            return;
+            return; // 完了したタスクを非表示にする
         }
 
         const li = document.createElement('li');
@@ -477,11 +965,8 @@ function renderTaskTree(taskList, parentElement, depth) {
         li.draggable = true;
         li.setAttribute('data-task-id', task.id);
         li.setAttribute('data-depth', depth);
-        
-        let toggleButton = `<button class="toggle-btn" style="visibility: ${task.children.length > 0 ? 'visible' : 'hidden'}">▼</button>`;
-        if (task.children.length > 0) {
-            toggleButton = `<button class="toggle-btn" onclick="toggleChildren(${task.id})">▼</button>`;
-        }
+
+        let toggleButton = `<button class="toggle-btn" style="visibility: ${task.children && task.children.length > 0 ? 'visible' : 'hidden'}" onclick="toggleChildren(${task.id})">${task.isExpanded ? '▼' : '▶'}</button>`;
 
         li.innerHTML = `
             <div class="task-content" style="padding-left: ${depth * 20}px">
@@ -492,9 +977,8 @@ function renderTaskTree(taskList, parentElement, depth) {
                            class="${task.status === 1 ? 'in-progress' : ''}">
                     <span class="checkmark"></span>
                 </label>
-                <span class="task-title" contenteditable="true" 
-                      onblur="updateTaskTitle(${task.id}, this.textContent)"
-                      onkeydown="handleTaskTitleKeyDown(event, ${task.id}, this)">${task.title}</span>
+                <span class="task-title" contenteditable="true"
+                      data-task-id="${task.id}">${task.title}</span>
                 ${showTimes ? `
                     <span class="task-times">
                         <span title="Add">📅${formatDate(task.addedAt)}</span>
@@ -508,29 +992,62 @@ function renderTaskTree(taskList, parentElement, depth) {
         `;
         parentElement.appendChild(li);
 
+        const taskTitleElement = li.querySelector('.task-title');
+        taskTitleElement.addEventListener('blur', (e) => {
+            const taskId = parseInt(e.target.getAttribute('data-task-id'));
+            const task = findTaskById(taskId);
+            if (task) {
+                const newTitle = e.target.textContent.trim();
+                if (newTitle !== task.title) {
+                    updateTaskTitle(taskId, newTitle);
+                }
+            }
+        });
+
+        taskTitleElement.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectTask(task.id);
+            // タイトルをクリックした場合のみ編集モードに入る
+            enterEditMode();
+        });
+
+        taskTitleElement.addEventListener('focus', () => {
+            selectTask(task.id);
+        });
+
+        taskTitleElement.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.target.blur();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEdit(e.target);
+            }
+        });
+
+        // タスク項目全体のクリックイベントリスナー
+        li.addEventListener('click', (e) => {
+            // タイトル以外の部分をクリックした場合
+            if (e.target.closest('.task-content')) {
+                selectTask(task.id);
+                e.stopPropagation();
+            }
+        });
+
+        // ドラッグイベントリスナーを追加
         li.addEventListener('dragstart', dragStart);
         li.addEventListener('dragover', dragOver);
         li.addEventListener('drop', drop);
         li.addEventListener('dragleave', dragLeave);
 
-        if (task.children.length > 0) {
+        if (task.children && task.children.length > 0) {
             const childrenContainer = document.createElement('ul');
             childrenContainer.className = 'children-container';
             childrenContainer.id = `children-${task.id}`;
-            const isExpanded = getTaskState(task.id);
-            childrenContainer.style.display = isExpanded ? 'block' : 'none';
+            childrenContainer.style.display = task.isExpanded ? 'block' : 'none';
             li.appendChild(childrenContainer);
             renderTaskTree(task.children, childrenContainer, depth + 1);
-
-            // トグルボタンの表示を更新
-            const toggleBtn = li.querySelector('.toggle-btn');
-            if (toggleBtn) {
-                toggleBtn.textContent = isExpanded ? '▼' : '▶';
-            }
         }
-
-        const taskTitleElement = li.querySelector('.task-title');
-        taskTitleElement.addEventListener('keydown', (e) => handleTaskKeyPress(e, task.id));
     });
 }
 
@@ -548,23 +1065,15 @@ function handleTaskTitleKeyDown(event, taskId, element) {
 }
 
 function updateTaskTitle(taskId, newTitle) {
-    const updateTitleRecursive = (taskList) => {
-        for (let task of taskList) {
-            if (task.id === taskId) {
-                task.title = newTitle.trim();
-                return true;
-            }
-            if (task.children.length > 0 && updateTitleRecursive(task.children)) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    if (updateTitleRecursive(tasks)) {
-        saveTasks();
-        renderTasks(); // タスクリストを再描画して変更を反映
+    const task = findTaskById(taskId);
+    if (!task) {
+        console.error(`Task with id ${taskId} not found`);
+        return;
     }
+
+    task.title = newTitle.trim();
+    saveTasks();
+    renderTasks();
 }
 
 function handleTaskKeyPress(event, taskId) {
@@ -579,17 +1088,27 @@ function handleTaskKeyPress(event, taskId) {
 }
 
 function toggleChildren(taskId) {
-    const childrenContainer = document.getElementById(`children-${taskId}`);
-    const toggleBtn = childrenContainer.parentElement.querySelector('.toggle-btn');
-    if (childrenContainer.style.display === 'none') {
-        childrenContainer.style.display = 'block';
-        toggleBtn.textContent = '▼';
-    } else {
-        childrenContainer.style.display = 'none';
-        toggleBtn.textContent = '▶';
+    const task = findTaskById(taskId);
+    if (task && task.children && task.children.length > 0) {
+        task.isExpanded = !task.isExpanded;
+        saveTasks();
+        renderTasks();
+        // 選択状態を維持
+        updateTaskSelection();
     }
-    // 表示状態を保存
-    saveTaskState(taskId, childrenContainer.style.display === 'block');
+}
+
+function findTaskById(taskId, taskList = tasks) {
+    for (const task of taskList) {
+        if (task.id === taskId) {
+            return task;
+        }
+        if (task.children) {
+            const found = findTaskById(taskId, task.children);
+            if (found) return found;
+        }
+    }
+    return null;
 }
 
 function saveTaskState(taskId, isExpanded) {
@@ -654,59 +1173,107 @@ function moveTask(taskId, direction) {
     }
 }
 
-function indentTask(taskId) {
-    const indentTaskInList = (taskList, parentList = null) => {
-        for (let i = 0; i < taskList.length; i++) {
-            if (taskList[i].id === taskId) {
-                if (i > 0) {
-                    const task = taskList.splice(i, 1)[0];
-                    if (!taskList[i - 1].children) {
-                        taskList[i - 1].children = [];
-                    }
-                    taskList[i - 1].children.push(task);
-                    return true;
-                }
-                return false;
-            }
-            if (taskList[i].children && taskList[i].children.length > 0) {
-                if (indentTaskInList(taskList[i].children, taskList)) {
-                    return true;
-                }
+function indentSelectedTasks() {
+    const tasksToIndent = Array.from(selectedTaskIds).sort((a, b) => {
+        const indexA = findTaskIndex(a);
+        const indexB = findTaskIndex(b);
+        return indexA - indexB;
+    });
+
+    tasksToIndent.forEach(taskId => {
+        const task = findTaskById(taskId);
+        if (task) {
+            indentTask(taskId);
+        }
+    });
+
+    updateTaskSelection();
+}
+
+function unindentSelectedTasks() {
+    const tasksToUnindent = Array.from(selectedTaskIds).sort((a, b) => {
+        const indexA = findTaskIndex(a);
+        const indexB = findTaskIndex(b);
+        return indexA - indexB;
+    });
+
+    tasksToUnindent.forEach(taskId => unindentTask(taskId));
+    updateTaskSelection();
+}
+
+function findTaskIndex(taskId, taskList = tasks) {
+    for (let i = 0; i < taskList.length; i++) {
+        if (taskList[i].id === taskId) {
+            return i;
+        }
+        if (taskList[i].children) {
+            const index = findTaskIndex(taskId, taskList[i].children);
+            if (index !== -1) {
+                return index;
             }
         }
-        return false;
-    };
-
-    if (indentTaskInList(tasks)) {
-        saveTasks();
-        renderTasks();
     }
+    return -1;
+}
+
+function findParentList(taskId, taskList = tasks) {
+    for (let i = 0; i < taskList.length; i++) {
+        if (taskList[i].id === taskId) {
+            return taskList;
+        }
+        if (taskList[i].children) {
+            const result = findParentList(taskId, taskList[i].children);
+            if (result) return result;
+        }
+    }
+    return null;
+}
+
+function indentTask(taskId) {
+    const task = findTaskById(taskId);
+    if (!task) return;
+
+    const parentList = findParentList(taskId);
+    if (!parentList) return;
+
+    const index = parentList.findIndex(t => t.id === taskId);
+    if (index <= 0) return;
+
+    const previousSibling = parentList[index - 1];
+    if (!previousSibling.children) {
+        previousSibling.children = [];
+    }
+    
+    const [movedTask] = parentList.splice(index, 1);
+    previousSibling.children.push(movedTask);
+
+    saveTasks();
+    renderTasks();
+    updateTaskSelection();
 }
 
 function unindentTask(taskId) {
-    const unindentTaskInList = (taskList, parentList = null, parentIndex = -1) => {
-        for (let i = 0; i < taskList.length; i++) {
-            if (taskList[i].id === taskId) {
-                if (parentList) {
-                    const task = taskList.splice(i, 1)[0];
-                    parentList.splice(parentIndex + 1, 0, task);
-                    return true;
-                }
-                return false;
-            }
-            if (taskList[i].children && taskList[i].children.length > 0) {
-                if (unindentTaskInList(taskList[i].children, taskList, i)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    };
+    const task = findTaskById(taskId);
+    if (!task) return;
 
-    if (unindentTaskInList(tasks)) {
-        saveTasks();
-        renderTasks();
+    const parent = findParentTask(taskId);
+    if (!parent) return;
+
+    const grandParentList = findParentList(parent.id);
+    if (!grandParentList) return;
+
+    const parentIndex = grandParentList.findIndex(t => t.id === parent.id);
+    const taskIndex = parent.children.findIndex(t => t.id === taskId);
+
+    const [movedTask] = parent.children.splice(taskIndex, 1);
+    grandParentList.splice(parentIndex + 1, 0, movedTask);
+
+    if (parent.children.length === 0) {
+        delete parent.children;
     }
+
+    saveTasks();
+    renderTasks();
 }
 
 function saveSettings() {
@@ -745,7 +1312,8 @@ function updateParentTaskSelect() {
 }
 
 function handleKeyPress(event) {
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && event.target.id === 'newTask') {
+        event.preventDefault(); // フォーム送信を防ぐ
         addTask();
     }
 }
@@ -787,3 +1355,4 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
     loadTasks();
 });
+document.addEventListener('keydown', handleKeyDown);
