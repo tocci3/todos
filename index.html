@@ -28,16 +28,30 @@
     <div id="exportModal" class="modal">
         <div class="modal-content">
             <h2>Export Tasks</h2>
+            <div class="radio-group">
+                <label><input type="radio" name="exportStyle" value="json" checked> JSON</label>
+                <label><input type="radio" name="exportStyle" value="spaces"> Spaces</label>
+                <label><input type="radio" name="exportStyle" value="asterisks"> Asterisks (*)</label>
+                <label><input type="radio" name="exportStyle" value="dashes"> Dashes (-)</label>
+                <label><input type="radio" name="exportStyle" value="noIndent"> No indent</label>
+            </div>
             <button onclick="exportToFile()">Export to File</button>
-            <button onclick="exportToTextBox()">Export to Text Box</button>
+            <textarea id="exportTextBox" style="width: 100%; height: 200px; margin-top: 10px;"></textarea>
             <button onclick="hideExportModal()">Cancel</button>
-            <textarea id="exportTextBox" style="display:none; width: 100%; height: 200px; margin-top: 10px;"></textarea>
         </div>
     </div>
+
     <!-- Import Modal -->
     <div id="importModal" class="modal">
         <div class="modal-content">
             <h2>Import Tasks</h2>
+            <div>
+                <label><input type="radio" name="importStyle" value="json" checked> JSON</label>
+                <label><input type="radio" name="importStyle" value="spaces"> Spaces</label>
+                <label><input type="radio" name="importStyle" value="asterisks"> Asterisks (*)</label>
+                <label><input type="radio" name="importStyle" value="dashes"> Dashes (-)</label>
+                <label><input type="radio" name="importStyle" value="noIndent"> No indent</label>
+            </div>
             <div>
                 <input type="radio" id="appendRadio" name="importType" value="append" checked>
                 <label for="appendRadio">Append</label>
@@ -45,12 +59,10 @@
                 <label for="replaceRadio">Replace</label>
             </div>
             <button onclick="importFromFile()">Import from File</button>
-            <button onclick="showImportTextBox()">Import from Text Box</button>
-            <button onclick="hideImportModal()">Cancel</button>
-            <textarea id="importTextBox" style="display:none; width: 100%; height: 200px; margin-top: 10px;"></textarea>
-            <div id="importOptions" style="display:none; margin-top: 10px;">
+            <textarea id="importTextBox" style="width: 100%; height: 200px; margin-top: 10px;"></textarea>
+            <div id="importOptions" style="margin-top: 10px;">
                 <button onclick="handleImport()">Import</button>
-                <button onclick="cancelImport()">Cancel</button>
+                <button onclick="hideImportModal()">Cancel</button>
             </div>
         </div>
     </div>

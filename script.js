@@ -6,7 +6,6 @@ let dropTarget = null;
 let dropPosition = null;
 let dragStartX = 0;
 let importedTasksTemp = null;
-//let selectedTaskId = null;
 let selectedTaskIds = new Set();
 let lastSelectedTaskId = null;
 
@@ -355,7 +354,7 @@ function collapseSelectedTask() {
 function moveSelection(direction) {
     const allTasks = getAllTasksFlattened();
     const visibleTasks = allTasks.filter(task => isTaskVisible(task));
-    
+
     if (visibleTasks.length === 0) return;
 
     if (selectedTaskIds.size === 0) {
@@ -365,22 +364,21 @@ function moveSelection(direction) {
         return;
     }
 
-    if (direction < 0) {
-        // 上キーが押された場合
-        const upperTaskId = findUpperVisibleTaskId(visibleTasks);
-        if (upperTaskId !== null) {
-            selectTask(upperTaskId);
-        }
-    } else {
-        // 下キーが押された場合（既存の動作を維持）
-        const lastSelectedId = lastSelectedTaskId;
-        const currentIndex = visibleTasks.findIndex(task => task.id === lastSelectedId);
-        let newIndex = currentIndex + direction;
-        if (newIndex >= visibleTasks.length) newIndex = 0;
-        selectTask(visibleTasks[newIndex].id);
+    const lastSelectedId = Array.from(selectedTaskIds).pop();
+    const currentIndex = visibleTasks.findIndex(task => task.id === lastSelectedId);
+    
+    if (currentIndex === -1) {
+        // 現在選択されているタスクが見つからない場合、最初のタスクを選択
+        selectTask(visibleTasks[0].id);
+        return;
     }
 
-    scrollToTask(Array.from(selectedTaskIds)[0]);
+    let newIndex = currentIndex + direction;
+    if (newIndex < 0) newIndex = visibleTasks.length - 1;
+    if (newIndex >= visibleTasks.length) newIndex = 0;
+
+    selectTask(visibleTasks[newIndex].id);
+    scrollToTask(visibleTasks[newIndex].id);
 }
 
 function findUpperVisibleTaskId(visibleTasks) {
@@ -488,15 +486,38 @@ function updateTaskSelection() {
     });
 }
 
-function exportTasks() {
-    const tasksJson = JSON.stringify(tasks, null, 2);
-    const blob = new Blob([tasksJson], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'tasks.json';
-    a.click();
-    URL.revokeObjectURL(url);
+function exportTasks(style) {
+    switch (style) {
+        case 'json':
+            return JSON.stringify(tasks, null, 2);
+        case 'spaces':
+            return tasksToText(tasks, '  ');
+        case 'asterisks':
+            return tasksToText(tasks, '*');
+        case 'dashes':
+            return tasksToText(tasks, '-');
+        case 'noIndent':
+            return tasksToText(tasks, '');
+        default:
+            return JSON.stringify(tasks, null, 2);
+    }
+}
+
+function tasksToText(tasks, indent = '  ', level = 0) {
+    let result = '';
+    tasks.forEach(task => {
+        if (indent === '*' || indent === '-') {
+            result += ' '.repeat(level * 2) + indent + ' ' + task.title + '\n';
+        } else if (indent === '') {
+            result += task.title + '\n';
+        } else {
+            result += indent.repeat(level) + task.title + '\n';
+        }
+        if (task.children && task.children.length > 0) {
+            result += tasksToText(task.children, indent, level + 1);
+        }
+    });
+    return result;
 }
 
 function importTasks() {
@@ -526,37 +547,59 @@ function importTasks() {
 
 function showExportModal() {
     document.getElementById('exportModal').style.display = 'block';
+    exportToTextBox();
 }
 
 function hideExportModal() {
     document.getElementById('exportModal').style.display = 'none';
-    document.getElementById('exportTextBox').style.display = 'none';
-}
-
-function exportToFile() {
-    const tasksJson = JSON.stringify(tasks, null, 2);
-    const blob = new Blob([tasksJson], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'tasks.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    hideExportModal();
 }
 
 function exportToTextBox() {
-    const tasksJson = JSON.stringify(tasks, null, 2);
+    const style = document.querySelector('input[name="exportStyle"]:checked').value;
+    const tasksText = exportTasks(style);
     const textBox = document.getElementById('exportTextBox');
-    textBox.value = tasksJson;
-    textBox.style.display = 'block';
+    textBox.value = tasksText;
 }
 
 function showImportModal() {
     document.getElementById('importModal').style.display = 'block';
-    document.getElementById('importTextBox').style.display = 'none';
-    document.getElementById('importOptions').style.display = 'none';
-    document.getElementById('appendRadio').checked = true; // デフォルトで Append を選択
+    document.getElementById('importTextBox').value = '';
+}
+
+function exportToFile() {
+    const style = document.querySelector('input[name="exportStyle"]:checked').value;
+    const tasksText = exportTasks(style);
+    const blob = new Blob([tasksText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    // ファイル名にスタイルを反映
+    let fileName;
+    switch(style) {
+        case 'json':
+            fileName = 'tasks.json';
+            break;
+        case 'spaces':
+            fileName = 'tasks_spaces.txt';
+            break;
+        case 'asterisks':
+            fileName = 'tasks_asterisks.txt';
+            break;
+        case 'dashes':
+            fileName = 'tasks_dashes.txt';
+            break;
+        case 'noIndent':
+            fileName = 'tasks_no_indent.txt';
+            break;
+        default:
+            fileName = 'tasks.txt';
+    }
+    
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    hideExportModal();
 }
 
 function importFromFile() {
@@ -591,42 +634,108 @@ function showImportTextBox() {
 }
 
 function handleImport() {
-    let importedTasks;
-    const textBox = document.getElementById('importTextBox');
-    if (textBox.style.display !== 'none' && textBox.value.trim() !== '') {
-        try {
-            importedTasks = JSON.parse(textBox.value);
-            if (!Array.isArray(importedTasks)) {
-                throw new Error('Invalid format: Imported data is not an array');
-            }
-        } catch (error) {
-            console.error('Import error:', error);
-            alert('Error importing tasks. Please check the JSON format.');
-            return;
-        }
-    } else if (importedTasksTemp) {
-        importedTasks = importedTasksTemp;
-    } else {
-        alert('No tasks to import.');
-        hideImportModal();
-        return;
-    }
-
+    const importStyle = document.querySelector('input[name="importStyle"]:checked').value;
     const importType = document.querySelector('input[name="importType"]:checked').value;
+    const textBox = document.getElementById('importTextBox');
+    const importedText = textBox.value.trim();
 
-    if (importType === 'append') {
-        tasks = tasks.concat(importedTasks);
-        alert('Tasks appended successfully!');
-    } else if (importType === 'replace') {
-        tasks = importedTasks;
-        alert('Tasks replaced successfully!');
+    let importedTasks;
+    try {
+        if (importStyle === 'json') {
+            importedTasks = JSON.parse(importedText);
+        } else {
+            importedTasks = textToTasks(importedText, importStyle);
+        }
+
+        // インポートされたタスクのIDを更新
+        updateTaskIds(importedTasks);
+
+        if (importType === 'append') {
+            tasks = tasks.concat(importedTasks);
+        } else {
+            tasks = importedTasks;
+        }
+
+        saveTasks();
+        renderTasks();
+        hideImportModal();
+        alert('Tasks imported successfully!');
+    } catch (error) {
+        console.error('Import error:', error);
+        alert('Error importing tasks. Please check the format and try again.');
     }
+}
 
-    saveTasks();
-    renderTasks();
-    hideImportModal();
-    importedTasksTemp = null;
-    textBox.value = '';
+function textToTasks(text, style) {
+    const lines = text.split('\n');
+    const rootTasks = [];
+    const stack = [{ level: -1, tasks: rootTasks }];
+
+    lines.forEach(line => {
+        const trimmedLine = line.trim();
+        if (trimmedLine === '') return;
+
+        let level = 0;
+        let title = trimmedLine;
+
+        switch (style) {
+            case 'spaces':
+                level = line.search(/\S|$/);
+                title = line.trim();
+                break;
+            case 'asterisks':
+            case 'dashes':
+                level = line.search(/[*-]/);
+                title = line.replace(/^[*-]\s*/, '').trim();
+                break;
+            case 'noIndent':
+                level = 0;
+                break;
+        }
+
+        const task = { id: Date.now() + Math.random(), title, status: 0, children: [], isExpanded: true };
+
+        while (stack.length > 1 && stack[stack.length - 1].level >= level) {
+            stack.pop();
+        }
+
+        stack[stack.length - 1].tasks.push(task);
+        stack.push({ level, tasks: task.children });
+    });
+
+    return rootTasks;
+}
+
+function updateTaskIds(taskList) {
+    let maxId = getMaxTaskId(tasks);
+    
+    function updateIds(tasks) {
+        tasks.forEach(task => {
+            maxId++;
+            task.id = maxId;
+            if (task.children && task.children.length > 0) {
+                updateIds(task.children);
+            }
+        });
+    }
+    
+    updateIds(taskList);
+}
+
+function getMaxTaskId(taskList) {
+    let maxId = 0;
+    
+    function findMaxId(tasks) {
+        tasks.forEach(task => {
+            maxId = Math.max(maxId, task.id);
+            if (task.children && task.children.length > 0) {
+                findMaxId(task.children);
+            }
+        });
+    }
+    
+    findMaxId(taskList);
+    return maxId;
 }
 
 function cancelImport() {
@@ -635,9 +744,6 @@ function cancelImport() {
 
 function hideImportModal() {
     document.getElementById('importModal').style.display = 'none';
-    document.getElementById('importTextBox').value = '';
-    document.getElementById('importTextBox').style.display = 'none';
-    document.getElementById('importOptions').style.display = 'none';
 }
 
 function dragStart(e) {
@@ -1354,5 +1460,17 @@ function completeChildren(children) {
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
     loadTasks();
+
+    // ラジオボタンの変更イベントリスナーを追加
+    document.querySelectorAll('input[name="exportStyle"]').forEach(radio => {
+        radio.addEventListener('change', exportToTextBox);
+    });
+
+    // モーダルの外側をクリックしたときにモーダルを閉じる
+    window.onclick = function(event) {
+        if (event.target.className === 'modal') {
+            event.target.style.display = 'none';
+        }
+    };
 });
 document.addEventListener('keydown', handleKeyDown);
