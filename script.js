@@ -96,7 +96,43 @@ function handleKeyDown(event) {
                     indentSelectedTasks();
                 }
                 break;
+            case ' ': // スペースキー
+                event.preventDefault();
+                cycleSelectedTasksStatus();
+                break;
         }
+    }
+}
+
+function cycleSelectedTasksStatus() {
+    const selectedTasks = Array.from(selectedTaskIds).map(id => findTaskById(id));
+    if (selectedTasks.length === 0) return;
+
+    selectedTasks.forEach(task => {
+        if (task) {
+            task.status = (task.status + 1) % 3;
+            updateTaskTimes(task);
+        }
+    });
+
+    saveTasks();
+    renderTasks();
+    updateTaskSelection();
+}
+
+function updateTaskTimes(task) {
+    const now = new Date().toISOString();
+    switch (task.status) {
+        case 1: // In Progress
+            if (!task.startedAt) task.startedAt = now;
+            break;
+        case 2: // Completed
+            if (!task.completedAt) task.completedAt = now;
+            break;
+        case 0: // Not Started
+            task.startedAt = null;
+            task.completedAt = null;
+            break;
     }
 }
 
