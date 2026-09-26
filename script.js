@@ -749,9 +749,8 @@ function updateTaskIds(taskList) {
         tasks.forEach(task => {
             maxId++;
             task.id = maxId;
-            if (task.children && task.children.length > 0) {
-                updateIds(task.children);
-            }
+            if (!Array.isArray(task.children)) task.children = [];
+            updateIds(task.children);
         });
     }
     
@@ -784,6 +783,7 @@ function hideImportModal() {
 
 function dragStart(e) {
     draggedTask = e.target.closest('.task-item');
+    if (!draggedTask) return;
     e.dataTransfer.setData('text/plain', draggedTask.getAttribute('data-task-id'));
     e.dataTransfer.effectAllowed = 'move';
     setTimeout(() => draggedTask.classList.add('dragging'), 0);
@@ -828,13 +828,26 @@ function dragLeave(e) {
 
 function drop(e) {
     e.preventDefault();
-    resetDragStyles();
-    if (dropTarget && dropTarget !== draggedTask) {
-        const draggedTaskId = parseInt(draggedTask.getAttribute('data-task-id'));
-        const targetTaskId = parseInt(dropTarget.getAttribute('data-task-id'));
-        moveTaskToNewPosition(draggedTaskId, targetTaskId, dropPosition);
+    try {
+        if (draggedTask && dropTarget && dropTarget !== draggedTask && dropPosition) {
+            const draggedTaskId = parseInt(draggedTask.getAttribute('data-task-id'));
+            const targetTaskId = parseInt(dropTarget.getAttribute('data-task-id'));
+            moveTaskToNewPosition(draggedTaskId, targetTaskId, dropPosition);
+        }
+    } finally {
+        finishDrag();
     }
-    draggedTask.classList.remove('dragging');
+}
+
+function dragEnd() {
+    finishDrag();
+}
+
+function finishDrag() {
+    if (draggedTask && draggedTask.classList) {
+        draggedTask.classList.remove('dragging');
+    }
+    resetDragStyles();
     draggedTask = null;
     dropTarget = null;
     dropPosition = null;
@@ -849,12 +862,18 @@ function resetDragStyles() {
 }
 
 function moveTaskToNewPosition(draggedTaskId, targetTaskId, position) {
+    const draggedTask = findTaskById(draggedTaskId);
+    const targetTask = findTaskById(targetTaskId);
+    if (!draggedTask || !targetTask || getTaskWithDescendants(draggedTask).some(task => task.id === targetTaskId)) {
+        return;
+    }
+
     const findAndRemoveTask = (taskList, parentList = null, depth = 0) => {
         for (let i = 0; i < taskList.length; i++) {
             if (taskList[i].id === draggedTaskId) {
-                return { task: taskList.splice(i, 1)[0], parentList: parentList, depth: depth };
+                return { task: taskList.splice(i, 1)[0], parentList: parentList, sourceList: taskList, index: i, depth: depth };
             }
-            if (taskList[i].children.length > 0) {
+            if (Array.isArray(taskList[i].children) && taskList[i].children.length > 0) {
                 const found = findAndRemoveTask(taskList[i].children, taskList, depth + 1);
                 if (found) return found;
             }
@@ -890,11 +909,11 @@ function moveTaskToNewPosition(draggedTaskId, targetTaskId, position) {
 
     const result = findAndRemoveTask(tasks);
     if (result) {
-        const { task, parentList, depth } = result;
+        const { task, parentList, sourceList, index } = result;
         let inserted = false;
 
         if (position.endsWith('-parent') && parentList) {
-            const grandParentList = findParentList(tasks, parentList);
+            const grandParentList = findParentListContainingList(tasks, parentList);
             if (grandParentList) {
                 const parentIndex = grandParentList.findIndex(t => t.children === parentList);
                 if (parentIndex !== -1) {
@@ -916,17 +935,19 @@ function moveTaskToNewPosition(draggedTaskId, targetTaskId, position) {
             saveTasks();
             renderTasks();
             selectTask(draggedTaskId);
+        } else {
+            sourceList.splice(index, 0, task);
         }
     }
 }
 
-function findParentList(taskList, childList) {
+function findParentListContainingList(taskList, childList) {
     for (let task of taskList) {
         if (task.children === childList) {
             return taskList;
         }
         if (task.children && task.children.length > 0) {
-            const found = findParentList(task.children, childList);
+            const found = findParentListContainingList(task.children, childList);
             if (found) return found;
         }
     }
@@ -937,8 +958,17 @@ function loadTasks() {
     const savedTasks = localStorage.getItem('tasks');
     if (savedTasks) {
         tasks = JSON.parse(savedTasks);
+        normalizeTaskTree(tasks);
     }
     renderTasks();
+}
+
+function normalizeTaskTree(taskList) {
+    if (!Array.isArray(taskList)) return;
+    taskList.forEach(task => {
+        if (!Array.isArray(task.children)) task.children = [];
+        normalizeTaskTree(task.children);
+    });
 }
 
 function saveTasks() {
@@ -951,7 +981,7 @@ function addTask(parentId = null) {
     if (taskTitle === '' && parentId === null) return;
 
     const newTask = {
-        id: Date.now(),
+        id: Math.max(Date.now(), getMaxTaskId(tasks) + 1),
         title: parentId ? prompt("Enter subtask title:") : taskTitle,
         status: 0,
         addedAt: new Date().toISOString(),
@@ -966,7 +996,7 @@ function addTask(parentId = null) {
         tasks.push(newTask);
         newTaskInput.value = ''; // 入力フィールドをクリア
     } else {
-        addChildTask(parentId, newTask);
+        if (!addChildTask(parentId, newTask)) return;
     }
 
     saveTasks();
@@ -978,29 +1008,18 @@ function addChildTask(parentId, newTask) {
     const findAndAddChild = (taskList) => {
         for (let task of taskList) {
             if (task.id === parentId) {
+                if (!Array.isArray(task.children)) task.children = [];
                 task.children.push(newTask);
-                // 親タスクの表示状態を確認
-                const parentContainer = document.getElementById(`children-${parentId}`);
-                if (parentContainer && parentContainer.style.display === 'none') {
-                    // 親が閉じている場合、新しい子タスクを非表示にする
-                    renderTasks();
-                    const newChildContainer = document.getElementById(`children-${newTask.id}`);
-                    if (newChildContainer) {
-                        newChildContainer.style.display = 'none';
-                    }
-                } else {
-                    renderTasks();
-                }
                 return true;
             }
-            if (task.children.length > 0 && findAndAddChild(task.children)) {
+            if (Array.isArray(task.children) && task.children.length > 0 && findAndAddChild(task.children)) {
                 return true;
             }
         }
         return false;
     };
 
-    findAndAddChild(tasks);
+    return findAndAddChild(tasks);
 }
 
 function deleteTask(taskId) {
@@ -1050,7 +1069,7 @@ function cycleStatus(taskId) {
                 }
                 return true;
             }
-            if (task.children.length > 0 && cycleStatusRecursive(task.children)) {
+            if (Array.isArray(task.children) && task.children.length > 0 && cycleStatusRecursive(task.children)) {
                 return true;
             }
         }
@@ -1123,7 +1142,7 @@ function renderTaskTree(taskList, parentElement, depth = 0) {
                       data-task-id="${task.id}">${task.title}</span>
                 ${showTimes ? `
                     <span class="task-times">
-                        <span title="Add">📅${formatDate(task.addedAt)}</span>
+                        <span title="Add">${formatDate(task.addedAt)}</span>
                         ${task.startedAt ? `<span title="InProgress">🏁${formatDate(task.startedAt)}</span>` : ''}
                         ${task.completedAt ? `<span title="Done">✅${formatDate(task.completedAt)}</span>` : ''}
                     </span>
@@ -1178,6 +1197,7 @@ function renderTaskTree(taskList, parentElement, depth = 0) {
 
         // ドラッグイベントリスナーを追加
         li.addEventListener('dragstart', dragStart);
+        li.addEventListener('dragend', dragEnd);
         li.addEventListener('dragover', dragOver);
         li.addEventListener('drop', drop);
         li.addEventListener('dragleave', dragLeave);
@@ -1274,7 +1294,7 @@ function editTask(taskId) {
                 }
                 return true;
             }
-            if (task.children.length > 0 && editTaskRecursive(task.children)) {
+            if (Array.isArray(task.children) && task.children.length > 0 && editTaskRecursive(task.children)) {
                 return true;
             }
         }
@@ -1306,7 +1326,7 @@ function moveTask(taskId, direction) {
                 return true;
             }
         }
-        return taskList.some(task => task.children.length > 0 && moveTaskInList(task.children));
+        return taskList.some(task => Array.isArray(task.children) && task.children.length > 0 && moveTaskInList(task.children));
     };
 
     if (moveTaskInList(tasks)) {
@@ -1410,10 +1430,6 @@ function unindentTask(taskId) {
     const [movedTask] = parent.children.splice(taskIndex, 1);
     grandParentList.splice(parentIndex + 1, 0, movedTask);
 
-    if (parent.children.length === 0) {
-        delete parent.children;
-    }
-
     saveTasks();
     renderTasks();
 }
@@ -1469,7 +1485,7 @@ function completeTaskAndChildren(taskId) {
                 completeChildren(task.children);
                 return true;
             }
-            if (task.children.length > 0 && completeTaskRecursive(task.children)) {
+            if (Array.isArray(task.children) && task.children.length > 0 && completeTaskRecursive(task.children)) {
                 return true;
             }
         }
@@ -1486,7 +1502,7 @@ function completeChildren(children) {
     for (let child of children) {
         child.status = 2;
         child.completedAt = new Date().toISOString();
-        if (child.children.length > 0) {
+        if (Array.isArray(child.children) && child.children.length > 0) {
             completeChildren(child.children);
         }
     }

@@ -1,0 +1,7 @@
+{
+  "name": "todos-tests",
+  "private": true,
+  "scripts": {
+    "test": "node test/run-tests.js"
+  }
+}
